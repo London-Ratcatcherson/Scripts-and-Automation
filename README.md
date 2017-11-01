@@ -25,9 +25,9 @@ The final results are output in three different ways.
 
 Each output has its own advantages. 
 
-=======================================================================================
+=======================================================================
 Get-Win32Apps.ps1 is much simpler. 
 It just lists the Win32 apps installed on the current system and outputs the results
 in the same three ways.
-
+( A fourth simpler output is there, commented out )
 
