@@ -32,3 +32,14 @@ It just lists the Win32 apps installed on the current system and outputs the res
 in the same three ways.
 ( A fourth simpler output is there, commented out )
 
+=======================================================================
+
+"Adventures in Automating Complex Installs.pdf" and the accompanying AutoInstaller
+folder are some sample scripts and discussion of a difficult installation 
+scenario I worked on. The WinPE "emergency boot" OS has a spare set of utilities
+and only the MSDOS batch file language for scripting. I have included some samples
+from that work for anyone who needs them. 
+
+Note that the sample .BAT and .CMD scripts have a .TXT file name extension added 
+to prevent accidental running.
+
