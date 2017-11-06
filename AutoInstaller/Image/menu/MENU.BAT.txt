@@ -1,0 +1,47 @@
+@ECHO OFF
+TITLE USBPE - Reimager
+COLOR 1F
+PROMPT --$G
+CLS
+
+SET __GPT=
+PUSHD ..
+FOR /F "tokens=1-8" %%A IN ('diskpart /s #listdisk.txt') DO (
+  IF "%%A"=="Disk" (
+    IF "%%D"=="29" SET __EMMC=%%B
+    IF "%%C"=="No" SET __BLAZE=1
+    IF "%%H"=="*"  (
+      SET __GPT=%%B
+      ECHO Found GPT [WoA bootable] Disk %%B [Size: %%D %%E Free: %%F %%G]
+    )
+  )
+)
+POPD
+
+ECHO USBPE drive is %_IMGDRIVE%
+IF "%__BLAZE%"=="1" ECHO Running on Blaze Tablet
+
+IF "%__EMMC%"=="" (
+  ECHO eMMC NOT FOUND!
+)
+ 
+ECHO eMMC is Disk %__EMMC%
+ECHO.
+
+@REM Look for Automation flag file
+IF NOT EXIST %_IMGDRIVE%\TI_Setup\AUTOMATIC.txt GOTO MANUAL
+@echo .
+type MENU_SELFHOST.TXT
+
+:Automatic
+@ECHO [A]utomatic installation chosen
+
+PUSHD \
+CallInstallWoa.cmd
+GOTO END
+
+:Manual
+type MENU.TXT
+GOTO END
+
+:END

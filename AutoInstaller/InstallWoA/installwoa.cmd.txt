@@ -1,0 +1,1175 @@
+@echo off
+setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
+
+set lP=%~dp0
+set disableDebugger=0
+set disableTestSigning=0
+set disableAudit=0
+set driverPath=empty
+set productId=empty
+set serial=empty
+set ode=0
+set odeLabel="ODE"
+set installLabel="InstallTo"
+set safeSize=4096
+set winre=0
+set winrefb=0
+set winreImg=0
+set critical=0
+set unattend=1
+set regPath=empty
+set overlayPath=empty
+set qcFw=empty
+set verifierDrivers=*
+set verifierLevel=0x209BB
+set enableVerifier=0
+
+set efiPart=t
+set osPart=u
+set winrePart=v
+set pbrPart=w
+set odePart=p
+
+set EL=call :ExecuteAndLog
+set LogInfo=call :LogInfo
+set LogWarning=call :LogWarning
+set LogError=call :LogError
+
+rem
+rem Setting up the logging
+rem 
+call :SetDateTime
+set logFile=%lP%installwoa-%datetime%.log
+echo Logfile can be found %logFile%
+
+rem
+rem using imageLocation and 
+
+:ParseParams
+set Parameter=%~1
+
+if '%Parameter%' neq '' (
+    set Parameter=%Parameter:"=%
+)
+
+if /i "%Parameter%" == "" goto ExitParseParams
+if /i "%Parameter:~0,2%" == "/?" goto DisplayHelp
+if /i "%Parameter:~0,2%" == "-?" goto DisplayHelp
+if /i "%Parameter:~0,5%" == "-DISD" set disableDebugger=1
+if /i "%Parameter:~0,5%" == "/DISD" set disableDebugger=1
+if /i "%Parameter:~0,5%" == "-DIST" set disableTestsigning=1
+if /i "%Parameter:~0,5%" == "/DIST" set disableTestsigning=1
+if /i "%Parameter:~0,7%" == "-DAUDIT" set disableAudit=1
+if /i "%Parameter:~0,7%" == "/DAUDIT" set disableAudit=1
+if /i "%Parameter:~0,5%" == "-IMG:" set imageLocation=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "/IMG:" set imageLocation=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "-DRV:" set driverPath=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "/DRV:" set driverPath=%Parameter:~5%
+if /i "%Parameter:~0,4%" == "-MN:" set machineName=%Parameter:~4%
+if /i "%Parameter:~0,4%" == "/MN:" set machineName=%Parameter:~4%
+if /i "%Parameter:~0,5%" == "-PID:" set productId=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "/PID:" set productId=%Parameter:~5%
+if /i "%Parameter:~0,8%" == "-SERIAL:" set serial=%Parameter:~8%
+if /i "%Parameter:~0,8%" == "/SERIAL:" set serial=%Parameter:~8%
+if /i "%Parameter:~0,4%" == "-ODE" set ode=1
+if /i "%Parameter:~0,4%" == "/ODE" set ode=1
+if /i "%Parameter:~0,6%" == "-WINRE" (
+    set winre=1
+    if "" NEQ "%Parameter:~7%" (
+        set winreImg=1
+    )
+)
+if /i "%Parameter:~0,6%" == "/WINRE"  (
+    set winre=1
+    if "" NEQ "%Parameter:~7%" (
+        set winreImg=1
+    )
+)
+if /i "%Parameter:~0,9%" == "-CRITICAL" set critical=1
+if /i "%Parameter:~0,9%" == "/CRITICAL" set critical=1
+if /i "%Parameter:~0,11%" == "-NOUNATTEND" set unattend=0
+if /i "%Parameter:~0,11%" == "/NOUNATTEND" set unattend=0
+if /i "%Parameter:~0,9%" == "-winrefb" set winrefb=1
+if /i "%Parameter:~0,9%" == "/winrefb" set winrefb=1
+if /i "%Parameter:~0,5%" == "-REG:" set regPath=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "/REG:" set regPath=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "-OVR:" set overlayPath=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "/OVR:" set overlayPath=%Parameter:~5%
+if /i "%Parameter:~0,6%" == "-QCFW:" set qcFw=%Parameter:~6%
+if /i "%Parameter:~0,6%" == "/QCFW:" set qcFw=%Parameter:~6%
+if /i "%Parameter:~0,5%" == "-DID:" set DISKNUMBER=%Parameter:~5%
+if /i "%Parameter:~0,5%" == "/DID:" set DISKNUMBER=%Parameter:~5%
+
+if /i "%Parameter:~0,9%" == "-DVENABLE" (
+    if /i "%Parameter:~0,10%" == "-DVENABLE:" set verifierDrivers=%Parameter:~10%
+    set enableVerifier=1
+)
+if /i "%Parameter:~0,9%" == "/DVENABLE" (
+    if /i "%Parameter:~0,10%" == "/DVENABLE:" set verifierDrivers=%Parameter:~10%
+    set enableVerifier=1
+)
+
+shift
+goto ParseParams
+:ExitParseParams
+
+
+if "1" EQU "%winrefb%" (
+    call :FixWinReFb
+    exit /b 0
+)
+
+if not defined DISKNUMBER (
+    echo list disk > %lp%listdisk.txt
+    diskpart /s %lP%\listdisk.txt
+    echo.
+    echo.
+    set /P DISKNUMBER="Select the Disk part from above: "
+)
+
+if not defined machineName (
+    set /P machineName="The name you wish to use for the machine: "
+)
+
+if not defined imageLocation (
+    %LogError% Imagelocation was not passed int.
+    goto :DisplayHelp    
+)
+
+if not exist "%imageLocation%" (
+    %LogError% %imageLocation% does not exist.
+    goto :DisplayHelp
+)
+
+if "0" EQU "%ode%" (
+    if "empty" EQU "%productId%" (
+        %LogError% Missing product key.
+        exit /b 1
+    )
+)
+
+rem
+rem Now we check to see if the disk exists.
+rem
+echo sel disk %DISKNUMBER% > %lP%\seldisk.txt
+
+diskpart /s %lP%\seldisk.txt >nul 2>&1
+
+if errorlevel 1 (
+    %LogError% Disknumber is invalid!!!!
+    goto :DisplayHelp
+)
+
+rem
+rem The Disk is good, now let's setup the partition script and partition the disk
+rem
+if "0" EQU "%ode%" (
+    echo sel disk %DISKNUMBER% > %lP%\dpscript.txt
+    echo clean >> %lP%\dpscript.txt
+    echo convert gpt >> %lP%\dpscript.txt
+
+    if "1" EQU "%winre%" (
+        echo create partition primary size=300 id=de94bba4-06d1-4d40-a16a-bfd50179d6ac >> %lP%\dpscript.txt 
+        echo format fs=ntfs quick label=Recovery >> %lP%\dpscript.txt
+        echo ass letter=%winrePart% >> %lP%\dpscript.txt
+    )
+
+    echo create partition efi size=100 >> %lP%\dpscript.txt
+    echo format fs=fat32 quick label=ESP >> %lP%\dpscript.txt
+    echo assign letter=%efiPart% >> %lP%\dpscript.txt
+    echo create partition msr size=128 >> %lP%\dpscript.txt
+
+    if "1" EQU "%winre%" (
+        echo create partition primary size=4100 >> %lP%\dpscript.txt
+        echo format fs=NTFS quick label="Push Button Reset" >> %lP%\dpscript.txt
+        echo assign letter=%pbrPart% >> %lP%\dpscript.txt    
+    )
+
+    echo create partition primary >> %lP%\dpscript.txt
+    echo format fs=ntfs quick >> %lP%\dpscript.txt
+    echo assign letter=%osPart% >> %lP%\dpscript.txt
+) ELSE (
+    echo sel disk %DISKNUMBER% > %lP%\dpscript.txt
+    echo clean >> %lP%\dpscript.txt
+    echo convert gpt >> %lP%\dpscript.txt
+    echo create partition efi size=100 >> %lP%\dpscript.txt
+    echo format fs=fat32 quick >> %lP%\dpscript.txt
+    echo assign letter=%efiPart% >> %lP%\dpscript.txt
+    echo create partition msr size=256 >> %lP%\dpscript.txt
+    echo create partition primary size=%safeSize%>> %lP%\dpscript.txt
+    echo format fs=fat32 label=%odeLabel% quick >> %lP%\dpscript.txt
+    echo assign letter=%odePart% >> %lP%\dpscript.txt
+    echo create partition primary >> %lP%\dpscript.txt
+    echo format fs=ntfs label=%installLabel% quick >> %lP%\dpscript.txt
+    echo assign letter=%osPart% >> %lP%\dpscript.txt
+
+    set osPart=%odePart%
+)
+
+%LogInfo% Creating the partitions on %DISKNUMBER%
+%EL% diskpart /s %lp%dpscript.txt
+
+if errorlevel 1 (
+    %LogError% Unable to partition disk.
+    exit /b 1
+)
+
+if "empty" neq "%qcFw%" (
+    call :UpdateQualcommFirmware
+
+    if errorlevel 1 (
+        exit /b 1
+    )
+)
+
+if "1" EQU "%winre%" (
+    call :SetupWinRE
+
+    if "1" EQU "!ERRORLEVEL!" (
+        exit /b 1
+    )
+
+) ELSE (
+    %LogInfo% Applying the image %imageLocation%
+    %EL% dism /Apply-Image /imagefile:"%imageLocation%" /Index:1 /ApplyDir:%osPart%:\
+    
+    if errorlevel 1 (
+        %LogError% DISM failed to apply the image %imageLocation%
+        exit /b 1
+    )
+
+    call :InjectDrivesIntoLocation %osPart%:\
+
+    if errorlevel 1 (
+        %LogError% Failed to inject drivers into image.
+        if "0" EQU "%critical%" (
+            exit /b 1
+        )
+    )
+
+    call :InjectRegistryFiles %osPart%:
+
+    if /i "empty" neq "%overlayPath%" (
+
+        %EL% xcopy /e /y "%overlayPath%" %osPart%:\
+
+    )
+
+    call :UpdateInstallWimSystemHive %osPart%:\windows\system32\config
+)
+
+
+%LogInfo% Updating the BCD data
+%EL% bcdboot /v %osPart%:\windows
+
+if errorlevel 1 (
+    %LogError% bcdboot failed to setup EFI partition.
+    exit /b 1
+)
+
+rem
+rem if we are doing an ode, copy the right BCD store over.
+rem
+if "0" NEQ "%ode%" (
+    %EL% copy /y %lp%\wlksetup\bcd %efiPart%:\efi\microsoft\boot
+    
+    if "0" NEQ "%ERRORLEVEL%" (
+        %LogError% Failed to copy new bcd store
+        exit /b 1
+    )
+)
+
+if "0" EQU "%disableDebugger%" (
+    %LogInfo% Setting up debugger
+
+    %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {default} debug on
+
+    if "%serial%" NEQ "empty" (
+
+        %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {dbgsettings} debugtype SERIAL
+
+        if "0" NEQ "!ERRORLEVEL!" (
+            %LogError% Unable to update debugger type
+            exit /b 1
+        )
+
+        for /f "delims=/ tokens=1,2" %%A IN ("%serial%") DO (
+
+            if "%%A" EQU "" (
+                %LogError% Inavlid serial parameter, missing port number
+                exit /b 1
+            )
+    
+            if "%%B" EQU "" (
+                %LogError% Inavlid serial parameter, missing baudrate.
+                exit /b 1
+            )
+
+            %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {dbgsettings} debugport %%A
+
+            if "0" NEQ "!ERRORLEVEL!" (
+                %LogError% Unable to update debugport
+                exit /b 1
+            )
+
+            %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {dbgsettings} baudrate %%B
+
+            if "0" NEQ "!ERRORLEVEL!" (
+                %LogError% Unable to update baudrate
+                exit /b 1
+            )
+
+            %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {default} dbgtransport kdcom.dll
+
+            if "0" NEQ "!ERRORLEVEL!" (
+                %LogError% Unable to update kdcom.dll
+                exit /b 1
+            )
+        )
+
+    ) ELSE (
+
+        %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {dbgsettings} debugtype USB
+
+        if "0" NEQ "!ERRORLEVEL!" (
+            %LogError% Unable to update debugger type
+            exit /b 1
+        )
+
+        %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {dbgsettings} targetname %machineName%
+
+        if "0" NEQ "!ERRORLEVEL!" (
+            %LogError% Unable to update debugger name
+            exit /b 1
+        )        
+
+    )
+)
+
+if "0" EQU "%disableTestSigning%" (
+    %EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {default} testsigning on
+
+    if "0" NEQ "!ERRORLEVEL!" (
+        %LogError% Unable to update test signing
+        exit /b 1
+    )
+)
+
+if 0 EQU %ode% (
+    if "1" EQU "%unattend%" (
+        call :UpdateUnattend
+    )
+) ELSE (
+    call :SetupODEImage
+)
+
+exit /b %ERRORLEVEL%
+
+:UpdateQualcommFirmware
+rem ****************************************************************************
+rem
+rem This applies Qualcomm's firmware
+rem     
+rem ****************************************************************************
+
+if not exist "%qcFw%\QCFirmwareUpdate.exe" (
+    %LogError% "%qcFw%\QCFirmwareUpdate.exe" does not exist.
+    exit /b 1
+)
+
+if not exist "%qcFw%\QPayload.efi" (
+    %LogError% "%qcFw%\QPayload.efi" does not exist
+    exit /b 1
+)
+
+%EL% "%qcFw%\QCFirmwareUpdate.exe" "%qcFw%\QPayload.efi"
+
+if errorlevel 1 (
+    %LogError% Unable to correctly update firmware.
+    exit /b 1
+)
+
+exit /b 0
+
+:ApplyUnattendXmlODE
+rem ****************************************************************************
+rem
+rem This will apply the unattendxml for the ode.  This xml sets the computer name and the 
+rem firewall.
+rem     
+rem ****************************************************************************
+
+set unattendFile=%odePart%:\windows\system32\unattend.xml
+
+echo ^<unattend xmlns="urn:schemas-microsoft-com:unattend"^> > %unattendFile%
+echo ^<servicing /^> >> %unattendFile%
+echo ^<settings pass="windowsPE"^> >> %unattendFile%
+echo ^<component name="Microsoft-Windows-Setup" processorArchitecture="%PROCESSOR_ARCHITECTURE%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"^> >> %unattendFile%
+echo ^<EnableFirewall^>false^</EnableFirewall^> >> %unattendFile%
+echo ^<EnableNetwork^>true^</EnableNetwork^> >> %unattendFile%
+echo ^<ComputerName^>%machineName%^</ComputerName^> >> %unattendFile%
+echo ^</component^> >> %unattendFile%
+echo ^<component name="Microsoft-Windows-TCPIP" processorArchitecture="%PROCESSOR_ARCHITECTURE%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"^> >> %unattendFile%
+echo ^<Interfaces^> >> %unattendFile%
+echo ^<Interface wcm:action="add"^> >> %unattendFile%
+echo ^<Ipv4Settings^> >> %unattendFile%
+echo ^<DhcpEnabled^>true^</DhcpEnabled^> >> %unattendFile%
+echo ^</Ipv4Settings^> >> %unattendFile%
+echo ^</Interface^> >> %unattendFile%
+echo ^</Interfaces^> >> %unattendFile%
+echo ^</component^> >> %unattendFile%
+echo ^</settings^> >> %unattendFile%
+echo ^<cpi:offlineImage cpi:source="" xmlns:cpi="urn:schemas-microsoft-com:cpi" /^> >> %unattendFile%
+echo ^</unattend^> >> %unattendFile%
+
+exit /b 0
+
+
+:UpdateRegistryInfoODE
+rem ****************************************************************************
+rem
+rem The unattend does change the computer name, but not in time to change the
+rem environment variables of the CMD window.
+rem     
+rem ****************************************************************************
+
+%EL% reg load HKLM\WINPEKE %odePart%:\windows\system32\config\system       
+
+if errorlevel 1 (
+    exit /b 1
+)
+
+rem
+rem no need to do anything if it is random.
+rem
+if "%machineName%" NEQ "*" (
+    %EL% reg add HKLM\WINPEKE\ControlSet001\Control\ComputerName\ComputerName /f /v ComputerName /t REG_SZ /d "%machineName%"
+
+    if errorlevel 1 (
+        exit /b 1
+    )
+)
+
+rem
+rem disable the fbwf filter for the booting off the HD.
+rem
+%EL% reg add HKLM\WINPEKE\ControlSet001\Services\FBWF /f /v Start /t REG_DWORD /d 4
+
+if errorlevel 1 (
+    exit /b 1
+)
+
+rem
+rem make it possible to connect to a windows 2003 server using local authentication
+rem
+%EL% reg add HKLM\SYSTEM\CurrentControlSet\Control\Lsa /f /v LmCompatibilityLevel /t REG_DWORD /d 1
+
+if errorlevel 1 (
+    exit /b 1
+)
+
+%EL% reg unload HKLM\WINPEKE       
+
+if errorlevel 1 (
+    exit /b 1
+)
+
+exit /b 0
+
+
+:SetupODEImage
+rem ****************************************************************************
+rem
+rem The does all the necessary settings for the ODE image.
+rem     
+rem ****************************************************************************
+
+call :ApplyUnattendXmlODE
+
+call :UpdateRegistryinfoODE
+
+if errorlevel 1 (
+    %LogError% there was an issue updating the registry.
+    exit /b 1
+)
+
+%EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {default} device partition=%osPart%:
+
+if errorlevel 1 (
+    %LogError% Failed to update device
+    exit /b 1
+)
+
+%EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {default} osdevice partition=%osPart%:    
+
+if errorlevel 1 (
+    %LogError% Failed to update osdevice
+    exit /b 1
+)
+
+%EL% bcdedit -store %efiPart%:\efi\microsoft\boot\bcd -set {default} description HCKODE
+
+if errorlevel 1 (
+    %LogError% Failed to update osdevice
+    exit /b 1
+)
+
+rem 
+rem Replace the startnet with the new one
+rem
+%EL% copy /y %lp%startnet.cmd %odePart%:\windows\system32
+
+if errorlevel 1 (
+    %LogError% Unable to copy startnet.cmd
+    exit /b 1
+)
+
+exit /b 0
+
+
+:InjectRegistryFiles
+rem ****************************************************************************
+rem Routine
+rem     This function will search the directory for registry files and then
+rem     import them into the hive. 
+rem
+rem Parameters
+rem
+rem     %1 Drive Path d:\
+rem     
+rem ****************************************************************************
+set regDrivePath=%1
+
+if "empty" neq "%regPath%" (
+    rem
+    rem Load all the hives.
+    rem
+    %EL% reg load HKLM\WINPEKE-software %regDrivePath%\windows\system32\config\software
+    %EL% reg load HKLM\WINPEKE-components %regDrivePath%\windows\system32\config\components
+    %EL% reg load HKLM\WINPEKE-system %regDrivePath%\windows\system32\config\system
+    %EL% reg load HKLM\WINPEKE-drivers %regDrivePath%\windows\system32\config\drivers
+    
+    pushd "%regPath%"
+    
+    for /F "delims=;" %%A IN ('dir /b *.reg') DO (
+        %EL% reg import %%A
+    )
+    
+    popd
+    
+    %EL% reg unload HKLM\WINPEKE-software
+    %EL% reg unload HKLM\WINPEKE-components
+    %EL% reg unload HKLM\WINPEKE-system
+    %EL% reg unload HKLM\WINPEKE-drivers
+)
+
+
+exit /b 0
+
+:InjectDrivesIntoLocation
+rem ****************************************************************************
+rem Routine
+rem  
+rem     If Drivers are to be injected into the image, this module is called.
+rem
+rem Parameters
+rem
+rem     %1 - Path to image to inject the drivers into.
+rem     
+rem ****************************************************************************
+
+if "empty" NEQ "%driverPath%" (
+
+    if not exist "%driverPath%" (
+        %LogError% %driverPath% does not exist    
+        exit /b 1
+    )
+
+    %LogInfo% Injecting drivers.
+    
+    %EL% dism /image:%1 /Add-Driver /Driver:"%driverPath%" /Recurse
+
+    if errorlevel 1 (
+        %LogError% Failed to inject drivers.
+        exit /b 1
+    )
+)
+
+exit /b 0
+
+
+:UpdateInstallWimSystemHive
+rem ****************************************************************************
+rem Routine 
+rem     
+rem     Responsible for loading and adding registry keys to the SYSTEM hive
+rem
+rem Parameters
+rem     %1 - Full path to the windows\system\config directory
+rem
+rem Return Values
+rem
+rem     0 - Success
+rem     1 - Failure
+rem
+rem ****************************************************************************
+set systemHive=%1\system
+
+%EL% reg load HKLM\installwoa %systemHive%
+
+if errorlevel 1 (
+    %LogError% Unable to load system hive.
+    exit /b 1
+)
+
+if "0" EQU "%disableAudit%" (
+    
+    %EL% reg add HKLM\installwoa\ControlSet001\Control\CI /v UMCIAuditMode /d 1 /t REG_DWORD /f
+    
+    if errorlevel 1 (
+        %LogError% Failed to add audit mode to the registry
+        exit /b 1
+    )
+)
+
+if "1" EQU "%enableVerifier%" (
+
+    %EL% reg add "HKLM\installwoa\ControlSet001\Control\Session Manager\Memory Management" /v VerifyDrivers /t REG_SZ /d "%verifierDrivers%"
+
+    if errorlevel 1 (
+        %LogError% Failed to add drivers to verifier in registry.
+        exit /b 1
+    )
+
+    %EL% reg add "HKLM\installwoa\ControlSet001\Control\Session Manager\Memory Management" /v VerifyDriverLevel /t REG_DWORD /d %verifierLevel%
+
+    if errorlevel 1 (
+        %LogError% Failed to add verifier level to verifier in registry.
+        exit /b 1
+    )
+
+)
+
+%EL% reg unload HKLM\installwoa
+
+exit /b 0
+
+
+:SetupWinRE
+rem ****************************************************************************
+rem Routine 
+rem     Laying down the WinRE image is a little more involved than the rest of
+rem     setup.  So if they want to do WinRE the setup steps are different.
+rem  
+rem     
+rem ****************************************************************************
+set imageDir=%osPart%:\wim\image
+set mountDir=%osPart%:\wim\mount
+set mountWinReDir=%osPart%:\wim\mountwinre
+set pbrImage=%imageDir%\pbrImage.wim
+set winReImage=%mountDir%\windows\system32\recovery\winre.wim
+set pbrSigningFile=%pbrPart%:\recovery\ResetConfig.xml
+set signingBatchFile=%pbrPart%:\recovery\EnableSigning.cmd
+
+%EL% md %pbrPart%:\recovery
+
+echo bcdedit -set {default} testsigning on > %signingBatchFile%
+
+echo ^<?xml version="1.0" encoding="utf-8"?^> > %pbrSigningFile%
+echo ^<Reset^> >> %pbrSigningFile%
+echo     ^<Run Phase="BasicReset_AfterImageApply"^> >> %pbrSigningFile%
+echo         ^<Path^>EnableSigning.cmd^</Path^> >> %pbrSigningFile%
+echo         ^<Duration^>1^</Duration^> >> %pbrSigningFile%
+echo     ^</Run^> >> %pbrSigningFile%
+echo     ^<Run Phase="FactoryReset_AfterImageApply"^> >> %pbrSigningFile%
+echo         ^<Path^>EnableSigning.cmd^</Path^> >> %pbrSigningFile%
+echo         ^<Duration^>1^</Duration^> >> %pbrSigningFile%
+echo     ^</Run^> >> %pbrSigningFile%
+echo ^</Reset^> >> %pbrSigningFile%
+
+%LogInfo% Setting up WinRE
+
+if "1" EQU "%winreImg%" (
+    set pbrImage=%imageLocation%
+    goto :skipImagePrep
+)
+
+%EL% md %imageDir%
+%EL% md %mountDir%
+%EL% md %mountWinReDir%
+
+%EL% copy /y "%imageLocation%" "%pbrImage%"
+
+if errorlevel 1 (
+    %LogError% Unable to copy file.
+    exit /b 1
+)
+
+rem
+rem Here we will setup the install.wim.
+rem
+%LogInfo% Setting up the install.wim
+
+%EL% dism /mount-wim /index:1 /mountdir:%mountDir% /wimfile:"%pbrImage%"
+
+if errorlevel 1 (
+    %LogError% Unable to mount %pbrImage%.
+    exit /b 1
+)
+
+call :InjectDrivesIntoLocation %mountDir%
+
+if errorlevel 1 (
+    if "0" EQU "%critical%" (
+        exit /b 1
+    )
+)
+
+if /i "empty" neq "%overlayPath%" (
+
+    %EL% xcopy /e /y "%overlayPath%" %osPart%:\
+
+)
+
+call :InjectRegistryFiles %mountDir%
+
+call :UpdateInstallWimSystemHive %mountDir%\windows\system32\config
+
+if errorlevel 1 (
+    exit /b 1
+)
+
+rem
+rem Now let's inject the drivers into the WinRE image.
+rem
+%EL% dism /mount-wim /index:1 /mountdir:%mountWinReDir% /wimfile:%winReImage% 
+
+if errorlevel 1 (
+    %LogError% Unable to mount winre image %winReImage%
+    exit /b 1
+)
+
+call :InjectDrivesIntoLocation %mountWinReDir%
+
+if errorlevel 1 (
+    if "0" EQU "%critical%" (
+        exit /b 1
+    )
+)
+
+call :InjectRegistryFiles %mountWinReDir%
+
+%EL% dism /unmount-wim /commit /mountdir:%mountWinReDir%
+
+if errorlevel 1 (
+    %LogError% Unable to fully commit the winre wim.
+    exit /b 1
+)
+
+rem
+rem Now let's commit changes to the wim.
+rem
+%EL% dism /unmount-wim /commit /mountdir:%mountDir%
+
+if errorlevel 1 (
+    %LogError% Unable to fully commit the install.wim.
+    exit /b 1
+)
+
+:skipImagePrep
+
+rem
+rem now copy the wim to the root of the PBR partitions
+rem
+%EL% copy /y "%pbrImage%" %pbrPart%:\recovery\install.wim
+
+if errorlevel 1 (
+    %LogError% Unable to copy %pbrImage% to %pbrPart%:\recovery\install.wim
+    exit /b 1
+)
+
+if "0" EQU "%winreImg%" (
+    %EL% rd /s /q %pbrPart%:\wim
+    
+    if errorlevel 1 (
+        %LogError% Unable to remove the directory %pbrPart%:\
+        exit /b 1
+    )
+)
+
+rem
+rem Now we will apply the wim to the drive.
+rem
+%EL% dism /Apply-Image /imagefile:%pbrPart%:\recovery\install.wim /Index:1 /ApplyDir:%osPart%:\
+
+if errorlevel 1 (
+    %LogError% Unable to apply the image to the disk.
+    exit /b 1
+)
+
+%EL% copy /y %lp%installwoa.cmd %osPart%:\windows\system32
+
+if errorlevel 1 (
+    %LogError% Unable to copy insallwoa.cmd
+    exit /b 1
+)
+
+rem
+rem Now we need to setup the recovery environment
+rem
+%EL% %osPart%:\windows\system32\reagentc /setosimage /path %pbrPart%:\recovery /index 1 /target %osPart%:\windows
+
+if errorlevel 1 (
+    %LogError% Unable to set the recovery image.
+    exit /b 1
+)
+
+rem
+rem Time to hide the PBR
+rem
+echo sel disk %DISKNUMBER% > %lP%\dpscript.txt
+echo sel par 4 >> %lP%\dpscript.txt
+echo remove >> %lP%\dpscript.txt
+echo gpt attributes=0x8000000000000001 >> %lP%\dpscript.txt
+
+%EL% diskpart /s dpscript.txt
+
+if errorlevel 1 (
+    %LogError% Unable to hide PBR
+    exit /b 1
+)
+
+exit /b 0
+
+
+:UpdateUnattend
+rem ****************************************************************************
+rem
+rem If we are doinig a clean OS install, then this function will update the
+rem unattend file. 
+rem
+rem ****************************************************************************
+
+if not exist %osPart%:\windows\panther (
+    md %osPart%:\windows\panther
+)
+
+set _destFile=%osPart%:\windows\panther\unattend.xml
+set _machineName=%machineName%
+
+if /I "%inputlocale%" EQU "" ( 
+    set inputlocale=0409:00000409
+)
+
+if /I "%systemlocale%" EQU "" ( 
+    set systemlocale=en-us
+)
+
+if /I "%userlocale%" EQU "" ( 
+    set userlocale=en-us
+)
+
+if /I "%uilocale%" EQU "" ( 
+    set uilocale=en-us
+)
+
+if exist %_destFile% ( 
+    del %_destFile% 
+)
+
+set testusername=Dev
+set testpassword=
+
+echo ^<unattend xmlns="urn:schemas-microsoft-com:unattend"^> > %_destFile%
+echo   ^<settings pass="specialize"^> >> %_destFile%
+echo     ^<component name="Microsoft-Windows-Deployment" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" processorArchitecture="%PROCESSOR_ARCHITECTURE%"^> >> %_destFile%
+echo       ^<RunSynchronous^> >> %_destFile%
+echo         ^<RunSynchronousCommand^> >> %_destFile%
+echo           ^<Order^>1^</Order^> >> %_destFile%
+echo           ^<Path^>cmd /c net user administrator /active:yes^</Path^> >> %_destFile%
+echo           ^<Description^>RS1^</Description^> >> %_destFile%
+echo           ^<WillReboot^>Never^</WillReboot^> >> %_destFile%
+echo         ^</RunSynchronousCommand^> >> %_destFile%
+echo       ^</RunSynchronous^> >> %_destFile%
+echo     ^</component^> >> %_destFile%
+echo     ^<component name="Microsoft-Windows-Shell-Setup" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" processorArchitecture="%PROCESSOR_ARCHITECTURE%"^> >> %_destFile%
+echo       ^<ComputerName^>%machinename%^</ComputerName^> >> %_destFile%
+echo       ^<ProductKey^>%productid%^</ProductKey^> >> %_destFile%
+echo     ^</component^> >> %_destFile%
+echo   ^</settings^> >> %_destFile%
+echo   ^<settings pass="oobeSystem"^> >> %_destFile%
+echo     ^<component name="Microsoft-Windows-International-Core" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" processorArchitecture="%PROCESSOR_ARCHITECTURE%"^> >> %_destFile%
+echo       ^<InputLocale^>%inputlocale%^</InputLocale^> >> %_destFile%
+echo       ^<SystemLocale^>%systemlocale%^</SystemLocale^> >> %_destFile%
+echo       ^<UILanguage^>%uilocale%^</UILanguage^> >> %_destFile%
+echo       ^<UserLocale^>%userlocale%^</UserLocale^> >> %_destFile%
+echo     ^</component^> >> %_destFile%
+echo     ^<component name="Microsoft-Windows-Shell-Setup" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" processorArchitecture="%PROCESSOR_ARCHITECTURE%"^> >> %_destFile%
+echo       ^<OOBE^> >> %_destFile%
+echo         ^<HideEULAPage^>true^</HideEULAPage^> >> %_destFile%
+echo         ^<HideWirelessSetupInOOBE^>true^</HideWirelessSetupInOOBE^> >> %_destFile%
+echo         ^<NetworkLocation^>Work^</NetworkLocation^> >> %_destFile%
+echo         ^<ProtectYourPC^>1^</ProtectYourPC^> >> %_destFile%
+echo       ^</OOBE^> >> %_destFile%
+echo       ^<TimeZone^>Pacific Standard Time^</TimeZone^> >> %_destFile%
+echo       ^<UserAccounts^> >> %_destFile%
+echo         ^<LocalAccounts^> >> %_destFile%
+echo           ^<LocalAccount^> >> %_destFile%
+echo             ^<Password^> >> %_destFile%
+echo               ^<Value^>%TestPassword%^</Value^> >> %_destFile%
+echo               ^<PlainText^>true^</PlainText^> >> %_destFile%
+echo             ^</Password^> >> %_destFile%
+echo             ^<Description^>My Local Account^</Description^> >> %_destFile%
+echo             ^<DisplayName^>Dev^</DisplayName^> >> %_destFile%
+echo             ^<Group^>Administrators^</Group^> >> %_destFile%
+echo             ^<Name^>%TestUsername%^</Name^> >> %_destFile%
+echo           ^</LocalAccount^> >> %_destFile%
+echo         ^</LocalAccounts^> >> %_destFile%
+echo         ^<AdministratorPassword^> >> %_destFile%
+echo           ^<Value^>%TestPassword%^</Value^> >> %_destFile%
+echo           ^<PlainText^>true^</PlainText^> >> %_destFile%
+echo         ^</AdministratorPassword^> >> %_destFile%
+echo       ^</UserAccounts^> >> %_destFile%
+echo       ^<AutoLogon^> >> %_destFile%
+echo         ^<Enabled^>true^</Enabled^> >> %_destFile%
+echo         ^<Username^>%TestUsername%^</Username^> >> %_destFile%
+echo         ^<Password^> >> %_destFile%
+echo           ^<Value^>%TestPassword%^</Value^> >> %_destFile%
+echo           ^<PlainText^>true^</PlainText^> >> %_destFile%
+echo         ^</Password^> >> %_destFile%
+echo         ^<LogonCount^>9999^</LogonCount^> >> %_destFile%
+echo       ^</AutoLogon^> >> %_destFile%
+echo       ^<FirstLogonCommands^> >> %_destFile%
+echo         ^<SynchronousCommand^> >> %_destFile%
+echo           ^<Order^>1^</Order^> >> %_destFile%
+echo           ^<CommandLine^>powercfg -change -standby-timeout-ac 0^</CommandLine^> >> %_destFile%
+echo           ^<Description^>"Disable sleep"^</Description^> >> %_destFile%
+echo         ^</SynchronousCommand^> >> %_destFile%
+echo         ^<SynchronousCommand^> >> %_destFile%
+echo           ^<Order^>2^</Order^> >> %_destFile%
+echo           ^<CommandLine^>powercfg.exe /setacvalueindex  scheme_current sub_sleep UNATTENDSLEEP 0^</CommandLine^> >> %_destFile%
+echo           ^<Description^>"Disable unattend sleep"^</Description^> >> %_destFile%
+echo         ^</SynchronousCommand^> >> %_destFile%
+echo         ^<SynchronousCommand^> >> %_destFile%
+echo           ^<Order^>3^</Order^> >> %_destFile%
+echo           ^<CommandLine^>powercfg.exe /setdcvalueindex  scheme_current sub_sleep UNATTENDSLEEP 0^</CommandLine^> >> %_destFile%
+echo           ^<Description^>"Disable unattend sleep"^</Description^> >> %_destFile%
+echo         ^</SynchronousCommand^> >> %_destFile%
+echo         ^<SynchronousCommand^> >> %_destFile%
+echo           ^<Order^>4^</Order^> >> %_destFile%
+echo           ^<CommandLine^>powercfg.exe /setacvalueindex  scheme_current sub_video VIDEOIDLE 0^</CommandLine^> >> %_destFile%
+echo           ^<Description^>"Disable video idle"^</Description^> >> %_destFile%
+echo         ^</SynchronousCommand^> >> %_destFile%
+echo         ^<SynchronousCommand^> >> %_destFile%
+echo           ^<Order^>5^</Order^> >> %_destFile%
+echo           ^<CommandLine^>powercfg.exe /setdcvalueindex  scheme_current sub_video VIDEOIDLE 0^</CommandLine^> >> %_destFile%
+echo           ^<Description^>"Disable video idle"^</Description^> >> %_destFile%
+echo         ^</SynchronousCommand^> >> %_destFile%
+
+if "1" EQU "%winre%" (
+
+echo         ^<SynchronousCommand^> >> %_destFile%
+echo           ^<Order^>6^</Order^> >> %_destFile%
+echo           ^<CommandLine^>installwoa.cmd -winrefb^</CommandLine^> >> %_destFile%
+echo           ^<Description^>"Install WOA"^</Description^> >> %_destFile%
+echo         ^</SynchronousCommand^> >> %_destFile%
+
+)
+
+echo       ^</FirstLogonCommands^> >> %_destFile%
+echo     ^</component^> >> %_destFile%
+echo   ^</settings^> >> %_destFile%
+echo ^</unattend^> >> %_destFile%
+
+exit /b 0
+
+:FixWinReFb
+rem ****************************************************************************
+rem
+rem Fixes the WinRE boot option to have driver signing.
+rem
+rem ****************************************************************************
+set bcdDescription=Windows Recovery Environment
+set tempIdentifier=empty
+set bcdIdentifier=empty
+
+for /f "delims=; tokens=1,2*" %%A IN ('bcdedit -enum all') DO (
+
+    for /f "tokens=1,2*" %%G IN ("%%A") DO (
+        set bcdParam=%%H %%I
+
+        if "empty" EQU "%bcdIdentifier%" (
+            if /i "description" EQU "%%G" (
+                if /i "%bcdDescription%" EQU "!bcdParam!" (
+                    set bcdIdentifier=!tempIdentifier!                             
+                )
+            )
+    
+            if /i "identifier" EQU "%%G" (
+                set tempIdentifier=%%H
+            )
+        )
+    )    
+)
+
+if "empty" NEQ "%bcdIdentifier%" (
+    %EL% bcdedit -set %bcdIdentifier% testsigning on    
+)
+
+exit /b 0
+
+:LogInfo
+rem ****************************************************************************
+rem
+rem Logs info to the screen and log file.
+rem
+rem ****************************************************************************
+setlocal enableextensions enabledelayedexpansion
+set Message=%*
+echo %Message%
+echo INFO: %Message%>>"%logFile%" 2>&1
+exit /b 0
+
+
+:LogWarning
+rem ****************************************************************************
+rem
+rem Logs a warning to the screen and log file.
+rem
+rem ****************************************************************************
+setlocal enableextensions enabledelayedexpansion
+set Message=%*
+echo WARNING: %Message%
+echo WARNING: %Message%>>"%logFile%" 2>&1
+exit /b 0
+
+
+:LogError
+rem ****************************************************************************
+rem
+rem Logs an error to the screen and log file.
+rem
+rem ****************************************************************************
+setlocal enableextensions enabledelayedexpansion
+set Message=%*
+echo ERROR: %Message%
+echo ERROR: %Message%>>"%logFile%" 2>&1
+exit /b 0
+
+
+:ExecuteAndLog
+rem ****************************************************************************
+rem
+rem Executes the command passed in and logs to the file.
+rem
+rem ****************************************************************************
+setlocal enableextensions enabledelayedexpansion 
+set Command=%*
+echo INFO COMMAND: %Command%
+echo %Command% >>"%logFile%" 2>&1
+%Command% >>"%logFile%" 2>&1
+exit /b !errorlevel!
+
+:SetDateTime
+rem ****************************************************************************
+rem
+rem This sub-routine populates the "datetime" variable with a file-name
+rem friendly date/time string.
+rem
+rem ****************************************************************************
+set currentDate=%date%
+set currentTime=%time%
+
+if /i "%currentDate:~9,1%" EQU "/" (
+    set year=%currentDate:~-4%
+    set day=%currentDate:~-7,2%
+    set month=%currentDate:~-10,2%
+) else (
+    set year=%currentDate:~-10,4%
+    set day=%currentDate:~-2%
+    set month=%currentDate:~-5,2%
+)
+
+set hour=%currentTime:~-11,2%
+set hour=%hour: =0%
+set minute=%currentTime:~-8,2%
+set second=%currentTime:~-5,2%
+set millisecond=%currentTime:~-2,2%
+
+set datetime=%year%%month%%day%-%hour%%minute%%second%%millisecond%
+
+set currentDate=
+set currentTime=
+
+set year=
+set day=
+set month=
+set hour=
+set minute=
+set second=
+set millisecond=
+
+exit /b 0
+
+
+:DisplayHelp
+echo.
+echo Usage
+echo.
+echo InstallWOA.cmd
+echo.
+echo    -? - This help
+echo.   
+echo    -IMG:^<full path to WIM to use^>
+echo.
+echo    -DISD - Disables debuggers
+echo.
+echo    -DIST - Disables test signing
+echo.
+echo    -DAUDIT - Enables desktop lockdown
+echo.
+echo    -DRV:^<Path to the driver files^>
+echo.
+echo    -MN:^<Name of the Machine^>
+echo.
+echo    -PID:^<Product ID to inject^>
+echo        The PID must be in the form: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
+echo.
+echo    -SERIAL:^<port/baudrate^>
+echo        This will enable the serial debugger.
+echo            example: -SERIAL:1/115200
+echo.
+echo        The default debugger is USB with the computer name as the target name.
+echo.
+echo    -WINRE
+echo        This switch will setup the WinRE images.
+echo.
+echo        use -winre:1 if you have a pre-populated install.wim.  Instead of
+echo        injecting the drives into the winre.wim and install.wim this switch
+echo        uses the image passed into -img and assumes winre.wim and install.wim
+echo        have all the necessary drivers.
+echo.        
+echo    -CRITICAL
+echo        Only fails if the error is critical.
+echo.                
+echo    -ODE  This switch is for setting up and ODE: (Do Not Use)
+echo.
+echo    -NOUNATTEND This tells the script not to inject the unattend script.
+echo.
+echo    -winrefb This is only to be used for setting the testsigning in the winre environment option
+echo.
+echo    -reg:^<Path to a directory that has a list of registry files^>
+echo.
+echo    -qcfw:^<Path that contains firmware updater tool and fimrware^>
+echo.
+echo    -ovr:^<Path to an overlay directory^>
+echo.
+echo    -dvenable or -dvenable:^<Driver list surrounded by quotes^>
+echo.
+echo        -dvenable will enable verifier on all drivers (MS as Well as 3rd Party)
+echo.
+echo        -dvenable:"driver1.sys driver2.sys driver3.sys"
+echo            Seperate drivers with space, but make sure to use quotes "" when
+echo            using multiple drivers.
+echo.
+:eof

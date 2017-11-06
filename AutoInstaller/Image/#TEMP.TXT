@@ -1,0 +1,3 @@
+SELECT DISK 0 
+CLEAN
+

@@ -1,0 +1,109 @@
+@ECHO OFF
+ECHO About to capture an OS image from the eMMC.
+ECHO.
+ECHO THIS WILL ERASE THE IMAGE ON THE USB STICK
+ECHO.
+ECHO NOTE: If the screen seems to freeze, move the mouse.
+PAUSE
+ECHO.
+
+IF "%__EMMC%"=="" (
+  ECHO eMMC NOT FOUND!
+  GOTO EXIT
+)
+
+SET _OSDRIVE=C:
+
+:RETRY
+IF NOT EXIST %_OSDRIVE%\Windows\System32\spool\drivers\ARM (
+    IF "%_OSDRIVE%"=="C:" SET _OSDRIVE=E:&& GOTO RETRY
+    : Note, saving D: for last because on Blaze Tablet it is the internal SD and causes a dialog to show.
+    IF "%_OSDRIVE%"=="E:" SET _OSDRIVE=F:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="F:" SET _OSDRIVE=G:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="G:" SET _OSDRIVE=H:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="H:" SET _OSDRIVE=I:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="I:" SET _OSDRIVE=J:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="J:" SET _OSDRIVE=K:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="K:" SET _OSDRIVE=L:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="L:" SET _OSDRIVE=M:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="M:" SET _OSDRIVE=N:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="N:" SET _OSDRIVE=O:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="O:" SET _OSDRIVE=P:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="P:" SET _OSDRIVE=Q:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="Q:" SET _OSDRIVE=R:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="R:" SET _OSDRIVE=S:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="S:" SET _OSDRIVE=T:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="T:" SET _OSDRIVE=U:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="U:" SET _OSDRIVE=V:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="V:" SET _OSDRIVE=W:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="W:" SET _OSDRIVE=X:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="X:" SET _OSDRIVE=Y:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="Y:" SET _OSDRIVE=Z:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="Z:" SET _OSDRIVE=D:&& GOTO RETRY
+
+    ECHO WoA disk not found!
+    ECHO.
+
+    GOTO EXIT
+)
+
+ECHO.
+ECHO WoA disk is %_OSDRIVE%
+ECHO.
+
+IF "%__GPT%"=="" (
+  ECHO NO GPT PARTITION FOUND!
+  GOTO EXIT
+)
+
+: Create the DISKPART script to assign R: to RECOVERY partition
+DEL #TEMP.TXT  0>NUL 1>NUL 2>NUL
+ECHO SELECT DISK %__GPT% >> #TEMP.TXT
+ECHO SELECT PAR 1 >> #TEMP.TXT
+ECHO ASSIGN LETTER=R >> #TEMP.TXT
+
+ECHO.
+ECHO Assigning R: to RECOVERY partition...
+START /MIN /WAIT diskpart /s #TEMP.TXT
+DEL #TEMP.TXT 0>NUL 1>NUL 2>NUL
+
+ECHO Capturing "RECOVERY" partition...
+DEL \IMAGE\SYSTEM.WIM 0>nul 1>nul 2>nul
+START /WAIT imagex /boot /capture R: \IMAGE\RECOVERY.WIM "USBPE Captured Recovery"
+
+
+: Create the DISKPART script to assign S: to EFI partition
+DEL #TEMP.TXT  0>NUL 1>NUL 2>NUL
+ECHO SELECT DISK %__GPT% >> #TEMP.TXT
+ECHO SELECT PAR 2 >> #TEMP.TXT
+ECHO ASSIGN LETTER=S >> #TEMP.TXT
+
+ECHO.
+ECHO Assigning S: to EFI partition...
+START /MIN /WAIT diskpart /s #TEMP.TXT
+DEL #TEMP.TXT 0>NUL 1>NUL 2>NUL
+
+
+ECHO Capturing "EFI" partition...
+DEL \IMAGE\SYSTEM.WIM 0>nul 1>nul 2>nul
+START /WAIT imagex /boot /capture S: \IMAGE\SYSTEM.WIM "USBPE Captured EFI"
+
+ECHO Capturing "OS" partition...
+DEL \IMAGE\OS.WIM 0>nul 1>nul 2>nul
+START /WAIT imagex /boot /capture %_OSDRIVE% \IMAGE\OS.WIM "USBPE Captured OS"
+
+: Create the DISKPART script to remove S: and R: (makes EFI and Recovery hidden)
+ECHO SELECT VOL R >> #TEMP.TXT
+ECHO REMOVE >> #TEMP.TXT
+ECHO SELECT VOL S >> #TEMP.TXT
+ECHO REMOVE >> #TEMP.TXT
+
+ECHO.
+ECHO Hiding EFI and Recovery partition...
+START /MIN /WAIT diskpart /s #TEMP.TXT
+DEL #TEMP.TXT 0>NUL 1>NUL 2>NUL
+
+:EXIT
+ECHO Done.
+PAUSE
+EXIT

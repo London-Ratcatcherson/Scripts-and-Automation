@@ -1,0 +1,20 @@
+CLEAN
+CONVERT GPT
+
+REM Create "Recovery" partition
+CRE PAR PRI SIZE=300 ID=de94bba4-06d1-4d40-a16a-bfd50179d6ac
+FOR FS=NTFS LABEL="Recovery" QUICK
+ASSIGN LETTER=R
+
+REM Create "System" partition
+CRE PAR PRI SIZE=99 ID=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+FOR FS=FAT32 LABEL="System" QUICK
+ASSIGN LETTER=S
+
+REM Create "Reserved" partition
+CRE PAR MSR SIZE=128
+
+REM Create "OS" partition
+CRE PAR PRI
+FOR FS=NTFS LABEL="OS" QUICK
+ASSIGN LETTER=O

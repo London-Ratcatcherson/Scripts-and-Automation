@@ -1,0 +1,64 @@
+@ECHO OFF
+SET _PRIVATEPATH=%_IMGDRIVE%\PRIVATES
+ECHO About to copy privates from %_PRIVATEPATH% to the OS image.
+PAUSE
+ECHO.
+
+SET _OSDRIVE=C:
+
+:RETRY
+IF NOT EXIST %_OSDRIVE%\Windows\System32\spool\drivers\ARM (
+    IF "%_OSDRIVE%"=="C:" SET _OSDRIVE=E:&& GOTO RETRY
+    : Note, saving D: for last because on Blaze Tablet it is the internal SD and causes a dialog to show.
+    IF "%_OSDRIVE%"=="E:" SET _OSDRIVE=F:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="F:" SET _OSDRIVE=G:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="G:" SET _OSDRIVE=H:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="H:" SET _OSDRIVE=I:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="I:" SET _OSDRIVE=J:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="J:" SET _OSDRIVE=K:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="K:" SET _OSDRIVE=L:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="L:" SET _OSDRIVE=M:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="M:" SET _OSDRIVE=N:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="N:" SET _OSDRIVE=O:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="O:" SET _OSDRIVE=P:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="P:" SET _OSDRIVE=Q:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="Q:" SET _OSDRIVE=R:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="R:" SET _OSDRIVE=S:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="S:" SET _OSDRIVE=T:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="T:" SET _OSDRIVE=U:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="U:" SET _OSDRIVE=V:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="V:" SET _OSDRIVE=W:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="W:" SET _OSDRIVE=X:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="X:" SET _OSDRIVE=Y:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="Y:" SET _OSDRIVE=Z:&& GOTO RETRY
+    IF "%_OSDRIVE%"=="Z:" SET _OSDRIVE=D:&& GOTO RETRY
+
+    ECHO WoA disk not found!
+    ECHO.
+
+    GOTO EXIT
+)
+
+ECHO.
+ECHO WoA disk is %_OSDRIVE%
+ECHO.
+
+PUSHD %_PRIVATEPATH%
+DEL %_OSDRIVE%\Windows\System32\Drivers\*.ori 0>NUL 1>NUL 2>NUL
+
+: Copy files
+FOR /F "delims==" %%a IN ('dir /b %_PRIVATEPATH%\*.sys') DO (
+	ECHO.
+	ECHO - %%a
+	REN %_OSDRIVE%\Windows\System32\Drivers\%%a %%a.ori
+	COPY %_PRIVATEPATH%\%%a %_OSDRIVE%\Windows\System32\Drivers
+)
+
+POPD
+
+:EXIT
+ECHO.
+ECHO Done.
+ECHO.
+PAUSE
+EXIT

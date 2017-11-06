@@ -1,0 +1,68 @@
+@ECHO OFF
+ECHO About to clean and re-image eMMC.
+ECHO.
+ECHO If there is a \DRIVERS directory on this USB stick, 
+ECHO it will be copied to the device's desktop after the image is applied.
+ECHO.
+ECHO NOTE: If the screen seems to freeze, move the mouse.
+IF NOT EXIST %_IMGDRIVE%\TI_Setup\AUTOMATIC.txt PAUSE
+ECHO.
+
+IF "%__EMMC%"=="" (
+  ECHO eMMC NOT FOUND!
+  GOTO EXIT
+)
+
+: Create the DISKPART script
+DEL #TEMP.TXT  0>NUL 1>NUL 2>NUL
+ECHO SELECT DISK %__EMMC% > #TEMP1.TXT
+COPY #TEMP1.TXT+#PARTITION.TXT #TEMP.TXT > nul
+DEL #TEMP1.TXT 0>NUL 1>NUL 2>NUL
+
+ECHO.
+ECHO Partitioning eMMC...
+START /MIN /WAIT diskpart /s #TEMP.TXT
+DEL #TEMP.TXT 0>NUL 1>NUL 2>NUL
+
+ECHO Restoring "Recovery" partition...
+START /MIN /WAIT imagex /apply RECOVERY.WIM 1 r:\
+
+ECHO Restoring "System" partition...
+START /MIN /WAIT imagex /apply SYSTEM.WIM 1 s:\
+
+ECHO Restoring "OS" partition...
+START /WAIT imagex /apply OS.WIM 1 O:\
+
+: Wait about 30 seconds
+ping -n 33 127.0.0.1 > nul
+
+ECHO Fixing up boot parameters...
+bcdedit /sysstore s:
+bcdedit /set {default} device partition=O:
+bcdedit /set {default} osdevice partition=O:
+bcdedit /set {bootmgr} device partition=S:
+
+ECHO Cleaning up...
+START /MIN /WAIT diskpart /s #CLEANUP.TXT
+
+IF EXIST \DRIVERS (
+  ECHO Copying DRIVERS directory to desktop...
+  MD O:\USERS\DEV\DESKTOP\DRIVERS   > nul
+  XCOPY /e \DRIVERS\*.* O:\USERS\DEV\DESKTOP\DRIVERS  > nul
+)
+
+IF EXIST \TI_Setup\Auto (
+  ECHO Copying Auto directory to desktop...
+  MD O:\USERS\DEV\DESKTOP\AUTO   > nul
+  XCOPY /e \TI_Setup\Auto\*.* O:\USERS\DEV\DESKTOP\AUTO  > nul
+)
+
+:EXIT
+ECHO Done.
+IF NOT EXIST %_IMGDRIVE%\TI_Setup\AUTOMATIC.txt PAUSE
+IF EXIST %_IMGDRIVE%\TI_Setup\AUTOMATIC.txt ( 
+	: Wait about 30 seconds
+	ping -n 33 127.0.0.1 > nul
+)
+
+EXIT

@@ -1,0 +1,10 @@
+@ECHO OFF
+PUSHD ..
+START /WAIT INJECT.BAT
+POPD
+MENU
+
+GOTO END
+P - Copy private SYS files from \PRIVATES to OS image
+I - Inject drivers from \INJECT to OS image
+:END

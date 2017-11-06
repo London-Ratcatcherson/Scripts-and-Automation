@@ -1,0 +1,5 @@
+@echo Enabling the Debugger.
+@bcdedit /debug {default} ON
+@bcdedit /dbgsettings USB TARGETNAME:WOATARGET
+@pause
+@exit

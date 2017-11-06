@@ -1,0 +1,6 @@
+@ECHO OFF
+PUSHD X:
+PROMPT $p$g
+START /WAIT cmd.exe
+POPD
+MENU

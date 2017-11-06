@@ -1,0 +1,4 @@
+@echo Disabling the debugger.
+@bcdedit /debug {default} OFF
+@pause
+@exit

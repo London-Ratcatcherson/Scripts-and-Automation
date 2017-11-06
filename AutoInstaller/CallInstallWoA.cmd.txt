@@ -1,0 +1,87 @@
+@REM DEBUG-POINT. If you need to debug the Setup, change the command below to @echo on (leaving this set is harmless).
+@echo off
+set LP=%~dp0
+set SETTINGS=D:\extras\MySettings.txt
+set PKID=empty
+set NAME=Dev-PC
+set WINRE=-WINRE
+set DEBUG=
+set OSVERSION=Client.gold
+
+
+@REM Look for user's settings first on the Tablet
+@REM If WinRE is setup, that will be drive D:
+if exist %SETTINGS% (
+	@REM Copy the existing settings to Setup-USB so they get written back to the Tablet.
+	copy %SETTINGS% %LP%overlay\extras /y
+	@echo Using customization found in %SETTINGS%
+	goto ParseSettings
+	)
+
+@REM If WinRE not setup, then look on drive C:
+set SETTINGS=C:\extras\MySettings.txt
+if exist %SETTINGS% (
+	@REM Copy the existing settings to Setup-USB so they get written back to the Tablet.
+	copy %SETTINGS_WINRE% %LP%overlay\extras /y
+	@echo Using customization found in %SETTINGS%
+	goto ParseSettings
+	)
+
+@REM No user settings on Tablet, so get the defaults from Setup-USB
+if not exist %~d0overlay\extras\MySettings.txt (
+	@echo .
+	@echo No user settings found.
+	goto NoPKID
+	)
+@echo No customizations found on client system
+
+:ParseSettings
+@REM for /f "tokens=1,2" %%A in ( %SETTINGS% ) do echo %%A %%B
+
+set SETTINGS=%~d0overlay\extras\MySettings.txt
+
+for /f "tokens=1,2" %%A in ( %SETTINGS% ) do (
+	if "%%A"=="PKID" set PKID=%%B
+	if "%%A"=="NAME" set NAME=%%B
+
+	if "%%A"=="WINRE" (
+		if "%%B"=="no" set WINRE=
+		if "%%B"=="No" set WINRE=
+		if "%%B"=="nO" set WINRE=
+		if "%%B"=="NO" set WINRE=
+	)
+	if "%%A"=="DEBUG" (
+		if "%%B"=="no" set DEBUG=-DISD
+		if "%%B"=="No" set DEBUG=-DISD
+		if "%%B"=="nO" set DEBUG=-DISD
+		if "%%B"=="NO" set DEBUG=-DISD
+	)
+)
+@REM Check for Invalid Product Key
+if "%PKID%"=="empty" goto NoPKID
+
+
+:StartSetup
+@REM Ready to run Setup
+@echo call \installwoa\installwoa.cmd -IMG:\%OSVERSION%\sources\install.wim %DEBUG% -DRV:\DRIVERS -MN:%NAME% -PID:%PKID% %WINRE% -DID:0 -OVR:\Overlay
+
+@REM DEBUG-POINT. If you need to debug setup, @REM the command below 
+call \installwoa\installwoa.cmd -IMG:\%OSVERSION%\sources\install.wim %DEBUG% -DRV:\DRIVERS -MN:%NAME% -PID:%PKID% %WINRE% -DID:0 -OVR:\Overlay
+goto ENDJOB
+
+:NoPKID
+@REM Invalid Product Key
+@echo Setup requires at least the Product Key in the user settings file.
+@echo See the documentation for details.
+@echo .
+@echo Installation cannot continue.
+@echo .
+pause
+goto ENDJOB
+
+
+:ENDJOB
+@REM Exit point for script
+@REM DEBUG-POINT. If you need to debug setup, change the command below to @REM exit (you will need to manually exit)
+exit
+

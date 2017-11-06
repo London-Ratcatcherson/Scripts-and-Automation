@@ -1,0 +1,24 @@
+@ECHO OFF
+ECHO About to ERASE the contents of eMMC.
+PAUSE
+ECHO.
+
+IF "%__EMMC%"=="" (
+  ECHO eMMC NOT FOUND!
+  GOTO EXIT
+)
+
+: Create the DISKPART script
+DEL #TEMP.TXT  0>NUL 1>NUL 2>NUL
+ECHO SELECT DISK %__EMMC% > #TEMP1.TXT
+COPY #TEMP1.TXT+#CLEAN.TXT #TEMP.TXT > nul
+DEL #TEMP1.TXT 0>NUL 1>NUL 2>NUL
+
+ECHO.
+ECHO Cleaning eMMC...
+START /MIN /WAIT diskpart /s #TEMP.TXT
+
+:EXIT
+ECHO Done.
+PAUSE
+EXIT

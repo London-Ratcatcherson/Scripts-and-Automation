@@ -1,0 +1,6 @@
+Welcome to the Texas Instruments' Windows on Arm setup.
+
+Installation will take approximately 30 minutes to complete.
+Your system will restart multiple times during setup.
+At times the display will go blank.
+

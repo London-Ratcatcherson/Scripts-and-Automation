@@ -1,0 +1,9 @@
+1 - Clean and Reimage eMMC
+2 - Clean eMMC
+3 - Capture current device image (will replace current image on USBPE)
+4 - WinPE Prompt
+5 - Exit and Reboot
+
+D - Disable Debugger
+E - Enable Debugger
+
