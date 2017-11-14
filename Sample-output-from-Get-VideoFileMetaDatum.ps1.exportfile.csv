@@ -1,4 +1,3 @@
-#TYPE Selected.System.Management.Automation.PSCustomObject
 "Name","title","length","Frame height","Frame width","Frame rate","Bit rate","Data rate","Size","Year","Comments","Type"
 "15HOURS.AVI",,"00:00:59","101","245","14 frames/second",,"34kbps","253 KB",,,"AVI File"
 "405 - The Movie.wmv","405","00:03:05","180","240","30 frames/second","34kbps","166kbps","4.43 MB",,,"WMV File"
