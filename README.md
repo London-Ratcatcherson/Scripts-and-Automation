@@ -11,11 +11,11 @@ Media files have a lot of interesting attributes
 And more, of which only the file size shows up in a standard console or explorer directory
 list.
 
-Get-VideoFileMetaDatum.ps1 gets the list of files in the current directory, then
+Get-FileMeta.ps1 gets the list of files in the current directory, then
 calls getDetailsOf on each file for first 512 attributes.
 ( See more about getDetailsOf() here: 
 https://msdn.microsoft.com/en-us/library/windows/desktop/bb775104(v=vs.85).aspx )
-There are some "work-arounds" for a couple of problematc attributes.
+There are some "work-arounds" for a couple of problematic attributes.
 Results are then filtered by the datum that I actually want.
 
 The final results are output in three different ways.
@@ -42,4 +42,27 @@ from that work for anyone who needs them.
 
 Note that the sample .BAT and .CMD scripts have a .TXT file name extension added 
 to prevent accidental running.
+
+=======================================================================
+
+"CameraProperty" is a PowerShell script to automate Windows 10 camera testing.
+There is an internal Microsoft tool that can get camera media types and properties.
+That tool has a complex command line, and an older MSDOS command shell script.
+
+I wrote a new PowerScript from scratch that greatly improved on the old script.
+I don't have rights to the internal tool, but I do to the script, which
+has a wealth of code that does a number of interesting things.
+
+o Uses Parameters
+o Includes a logger for display and to a file
+o File and directory creation 
+o Uses WMI to retrieve device and OS characteristics
+o Lots of data manipulation
+
+
+
+
+
+
+
 
